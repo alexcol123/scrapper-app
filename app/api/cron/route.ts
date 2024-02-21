@@ -1,27 +1,28 @@
-import Product from "@/lib/models/product.model";
-import { connectToDB } from "@/lib/mongoose";
-import { generateEmailBody, sendEmail } from "@/lib/nodemailer";
-import { scrapedAmazonProduct } from "@/lib/scraper";
-import { getAveragePrice, getEmailNotifType, getHighestPrice, getLowestPrice } from "@/lib/utils";
+import { NextResponse } from "next/server";
 
-export const maxDuration = 10; // This function can run for a maximum of 300 seconds
+import { getLowestPrice, getHighestPrice, getAveragePrice, getEmailNotifType } from "@/lib/utils";
+import { connectToDB } from "@/lib/mongoose";
+import Product from "@/lib/models/product.model";
+import { scrapeAmazonProduct } from "@/lib/scraper";
+import { generateEmailBody, sendEmail } from "@/lib/nodemailer";
+
+export const maxDuration = 300; // This function can run for a maximum of 300 seconds
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
-
+export async function GET(request: Request) {
   try {
+    connectToDB();
 
-    connectToDB()
+    const products = await Product.find({});
 
-    const products = await Product.find({})
+    if (!products) throw new Error("No product fetched");
 
-    if (!products) throw new Error("No Products found")
     // ======================== 1 SCRAPE LATEST PRODUCT DETAILS & UPDATE DB
     const updatedProducts = await Promise.all(
       products.map(async (currentProduct) => {
         // Scrape product
-        const scrapedProduct = await scrapedAmazonProduct(currentProduct.url);
+        const scrapedProduct = await scrapeAmazonProduct(currentProduct.url);
 
         if (!scrapedProduct) return;
 
@@ -70,8 +71,12 @@ export async function GET() {
         return updatedProduct;
       })
     );
-  } catch (error) {
-    throw new Error(`Error in GET; ${error}`)
-  }
 
+    return NextResponse.json({
+      message: "Ok",
+      data: updatedProducts,
+    });
+  } catch (error: any) {
+    throw new Error(`Failed to get all products: ${error.message}`);
+  }
 }
